@@ -1,6 +1,6 @@
 #include "stm32f103xb.h"
 
-/* WeAct Blue Pill Plus Clone (STM32F103CBT6) values */
+/* WeAct Blue Pill Plus Clone (STM32F103CBT6) values (https://stm32-base.org/boards/STM32F103C8T6-WeAct-Blue-Pill-Plus-Clone) */
 #define HSI_hz 8 * 1000000 // 8MHz
 #define HSE_hz 8 * 1000000 // 8MHz
 #define LSI_hz 40 * 1000   // 40kHz
@@ -11,6 +11,7 @@ uint32_t min(uint32_t a, uint32_t b)
     return a > b ? b : a;
 }
 
+// See stm32f103c8 reference manual - chapter 8 (https://www.st.com/en/microcontrollers-microprocessors/stm32f103c8.html#documentation)
 uint32_t sysclk_frequency(void)
 {
     uint32_t sysclk_hz = HSI_hz; // Default is HSI frequency
@@ -51,6 +52,7 @@ uint32_t sysclk_frequency(void)
     return sysclk_hz;
 }
 
+// See Arm Cortex M3 reference manual - chapter 4 (https://developer.arm.com/documentation/ddi0337/h?_ga=2.258143811.839925519.1629395464-2030874199.1629395464)
 void systick_init()
 {
     // Calculate reload value for 1 ms tick
