@@ -59,8 +59,9 @@ void systick_init()
     uint32_t reload_value = (sysclk_frequency() / 1000) - 1; // Ticks per ms
 
     SysTick->LOAD = reload_value;
-    SysTick->VAL = 0;
-    SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Msk | SysTick_CTRL_ENABLE_Msk;
+    SysTick->VAL = 0; // Reset timer
+    // SysTick_CTRL_ENABLE_Msk to start timer & SysTick_CTRL_CLKSOURCE_Msk to use the CPU main clock
+    SysTick->CTRL = SysTick_CTRL_ENABLE_Msk | SysTick_CTRL_CLKSOURCE_Msk;
 }
 
 // Precise delay function
@@ -84,17 +85,14 @@ int main(void)
     // Configure PB2 as output, push-pull, 2MHz
     // Clear bits 8-11 in CRL for PB2
     GPIOB->CRL &= ~(0xF << 8);
-    // Set MODE2 to 10 (2MHz output), CNF2 to 00 (push-pull)
-    GPIOB->CRL |= (0x2 << 8);
+    // Set MODE2 to 10 (output, 2MHz), CNF2 remains 00 (general purpose output push-pull)
+    GPIOB->CRL |= GPIO_CRL_MODE2_1;
 
     while (1)
     {
-        // Set PB2 low (may turn LED on if active low)
-        GPIOB->BSRR = (1 << (2 + 16)); // Reset bit for PB2
-        delay_ms(1000);
-
-        // Set PB2 high (may turn LED on if active high)
-        GPIOB->BSRR = (1 << 2); // Set bit for PB2
+        // Integrated LED is controlled by GPIO B2 pin on the model I own (https://stm32-base.org/boards/STM32F103C8T6-WeAct-Blue-Pill-Plus-Clone.html#User-LED).
+        // On the original the pin associated with the integrated led is the GPIO C13 pin (https://stm32-base.org/boards/STM32F103C8T6-Blue-Pill#User-LED).
+        GPIOB->BSRR = (GPIOB->IDR & GPIO_IDR_IDR2) ? GPIO_BSRR_BR2 : GPIO_BSRR_BS2;
         delay_ms(1000);
     }
 
