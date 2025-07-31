@@ -1,99 +1,99 @@
 #include "stm32f103xb.h"
+#include "clock.h"
+#include "uart.h"
 
-/* WeAct Blue Pill Plus Clone (STM32F103CBT6) values (https://stm32-base.org/boards/STM32F103C8T6-WeAct-Blue-Pill-Plus-Clone) */
-#define HSI_hz 8 * 1000000 // 8MHz
-#define HSE_hz 8 * 1000000 // 8MHz
-#define LSI_hz 40 * 1000   // 40kHz
-#define LSE_hz 32768       // 32.768kHz
+volatile uint32_t BLINK_DELAY = 1000;
+volatile uint32_t systick_count = 0;   // Tracks SysTick ticks for debouncing
+volatile uint32_t last_press_time = 0; // Time of last valid button press
 
-uint32_t min(uint32_t a, uint32_t b)
+#define DEBOUNCE_MS 100
+
+#ifdef __cplusplus
+extern "C"
 {
-    return a > b ? b : a;
-}
+#endif
 
-// See stm32f103c8 reference manual - chapter 8 (https://www.st.com/en/microcontrollers-microprocessors/stm32f103c8.html#documentation)
-uint32_t sysclk_frequency(void)
-{
-    uint32_t sysclk_hz = HSI_hz; // Default is HSI frequency
-    uint32_t hse_status = 0;
-
-    // Check current clock source (SWS bits in CFGR, bits 3:2)
-    uint32_t sws = (RCC->CFGR >> 2) & 0x3;
-
-    if (sws == 0x2 /* PLL used as system clock */)
+    void SysTick_Handler(void)
     {
-        // Get PLL multiplication factor (PLLMUL, bits 21:18)
-        uint32_t pllmul = min(((RCC->CFGR >> 18) & 0xF) + 2, 0x10); // value range is 2x to 16x
-        // Check PLL source (PLLSRC, bit 16)
-        uint32_t pllsrc = (RCC->CFGR >> 16) & 0x1;
+        systick_count++;
+    }
 
-        if (pllsrc == 0) /* PLL source is HSI/2 */
+    void EXTI0_IRQHandler(void)
+    {
+        uart_print_str("EXTI triggered\r\n");
+        if (EXTI->PR & EXTI_PR_PR0)
         {
-            sysclk_hz = (HSI_hz / 2) * pllmul;
-        }
-        else /* PLL source is HSE */
-        {
-            hse_status = (RCC->CR >> 17) & 0x1; // HSE ready flag
-            if (hse_status)
+            EXTI->PR = EXTI_PR_PR0; // Clear pending bit
+
+            uart_print_str("systick_count = ");
+            uart_print_uint(systick_count);
+            uart_print_str("ms & last_press_time = ");
+            uart_print_uint(last_press_time);
+            uart_print_str("ms\r\n");
+
+            if (systick_count - last_press_time >= DEBOUNCE_MS)
             {
-                sysclk_hz = HSE_hz * pllmul;
+                // If GPIO A0 is high => button is pressed
+                if (GPIOA->IDR & GPIO_IDR_IDR0)
+                {
+                    BLINK_DELAY = 100;
+                    uart_print_str("PRESSED, blink pace set to 100ms\r\n");
+                }
+                else
+                {
+                    BLINK_DELAY = 1000;
+                    uart_print_str("RELEASED, blink pace set to 1000ms\r\n");
+                }
+                last_press_time = systick_count;
             }
         }
     }
-    else if (sws == 0x1 /* HSE used as system clock */)
-    {
-        hse_status = (RCC->CR >> 17) & 0x1;
-        if (hse_status)
-        {
-            sysclk_hz = HSE_hz;
-        }
-    } // Else, Default is HSI oscillator
 
-    return sysclk_hz;
+#ifdef __cplusplus
 }
-
-// See Arm Cortex M3 reference manual - chapter 4 (https://developer.arm.com/documentation/ddi0337/h?_ga=2.258143811.839925519.1629395464-2030874199.1629395464)
-void systick_init()
-{
-    // Calculate reload value for 1 ms tick
-    uint32_t reload_value = (sysclk_frequency() / 1000) - 1; // Ticks per ms
-
-    SysTick->LOAD = reload_value;
-    SysTick->VAL = 0; // Reset timer
-    // SysTick_CTRL_ENABLE_Msk to start timer & SysTick_CTRL_CLKSOURCE_Msk to use the CPU main clock
-    SysTick->CTRL = SysTick_CTRL_ENABLE_Msk | SysTick_CTRL_CLKSOURCE_Msk;
-}
-
-// Precise delay function
-void delay_ms(uint32_t ms)
-{
-    for (uint32_t i = 0; i < ms; i++)
-    {
-        // Wait until the COUNTFLAG is set (timer reached zero)
-        while (!(SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk))
-            ;
-    }
-}
+#endif
 
 int main(void)
 {
+    uart_init();
     systick_init();
 
-    // Enable clock for GPIOB (bit 3 in RCC_APB2ENR)
-    RCC->APB2ENR |= (1 << 3);
+    // Enable clock for GPIOA & GPIOB (bit 3:2 in RCC_APB2ENR)
+    RCC->APB2ENR |= (RCC_APB2ENR_AFIOEN | RCC_APB2ENR_IOPAEN | RCC_APB2ENR_IOPBEN);
 
-    // Configure PB2 as output, push-pull, 2MHz
-    // Clear bits 8-11 in CRL for PB2
-    GPIOB->CRL &= ~(0xF << 8);
-    // Set MODE2 to 10 (output, 2MHz), CNF2 remains 00 (general purpose output push-pull)
-    GPIOB->CRL |= GPIO_CRL_MODE2_1;
+    {
+        // Clear bits 3:0 in CRL for PA0
+        GPIOA->CRL &= ~(0xF << 0);
+        GPIOA->CRL |= GPIO_CRL_CNF0_1; // Input with pull-up/pull-down
+        GPIOA->ODR &= ~GPIO_ODR_ODR0;  // Enable pull-down
+
+        AFIO->EXTICR[0] &= ~(0xF << 0); // Reset EXTI0 3:0 bits
+        // AFIO->EXTICR[0] |= AFIO_EXTICR1_EXTI0_PA; // Connect External interrupt to PA0 (button pressed), actually not needed since reset gives the wanted value
+        EXTI->RTSR |= EXTI_RTSR_RT0; // Enable rising trigger for input line 0 (EXTI0) [RTSR == Rising Trigger Selection Register]
+        EXTI->FTSR |= EXTI_FTSR_FT0;
+        EXTI->IMR |= EXTI_IMR_IM0; // Unmask interrupt requests on line 0 (EXTI0) [IMR == Interrupt Mask Register]
+
+        NVIC_EnableIRQ(EXTI0_IRQn);
+    }
+
+    {
+        // Configure PB2 as output, push-pull, 2MHz
+        // Clear bits 11:8 in CRL for PB2
+        GPIOB->CRL &= ~(0xF << 8);
+        // Set MODE2 to 10 (output, 2MHz), CNF2 remains 00 (general purpose output push-pull)
+        GPIOB->CRL |= GPIO_CRL_MODE2_1;
+    }
 
     while (1)
     {
-        // Integrated LED is controlled by GPIO B2 pin on the model I own (https://stm32-base.org/boards/STM32F103C8T6-WeAct-Blue-Pill-Plus-Clone.html#User-LED).
-        // On the original the pin associated with the integrated led is the GPIO C13 pin (https://stm32-base.org/boards/STM32F103C8T6-Blue-Pill#User-LED).
+        // On the original board model the pin associated with the integrated led is the GPIO C13 pin (https://stm32-base.org/boards/STM32F103C8T6-Blue-Pill#User-LED).
+        // On the model I own (WeAct made) Integrated LED is controlled by GPIO B2 pin (https://stm32-base.org/boards/STM32F103C8T6-WeAct-Blue-Pill-Plus-Clone.html#User-LED).
         GPIOB->BSRR = (GPIOB->IDR & GPIO_IDR_IDR2) ? GPIO_BSRR_BR2 : GPIO_BSRR_BS2;
-        delay_ms(1000);
+        if (GPIOB->IDR & GPIO_IDR_IDR2)
+            uart_print_str("Led status: ON\r\n");
+        else
+            uart_print_str("Led status: OFF\r\n");
+        delay_ms(BLINK_DELAY);
     }
 
     return 0;
