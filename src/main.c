@@ -20,16 +20,16 @@ extern "C"
 
     void EXTI0_IRQHandler(void)
     {
-        uart_print_str("EXTI triggered\r\n");
+        // uart_print_str("EXTI triggered\r\n");
         if (EXTI->PR & EXTI_PR_PR0)
         {
             EXTI->PR = EXTI_PR_PR0; // Clear pending bit
 
-            uart_print_str("systick_count = ");
-            uart_print_uint(systick_count);
-            uart_print_str("ms & last_press_time = ");
-            uart_print_uint(last_press_time);
-            uart_print_str("ms\r\n");
+            // uart_print_str("systick_count = ");
+            // uart_print_uint(systick_count);
+            // uart_print_str("ms & last_press_time = ");
+            // uart_print_uint(last_press_time);
+            // uart_print_str("ms\r\n");
 
             if (systick_count - last_press_time >= DEBOUNCE_MS)
             {
@@ -37,12 +37,12 @@ extern "C"
                 if (GPIOA->IDR & GPIO_IDR_IDR0)
                 {
                     BLINK_DELAY = 100;
-                    uart_print_str("PRESSED, blink pace set to 100ms\r\n");
+                    uart_print_str("\n\r\033[KPRESSED, blink pace set to 100ms\033[A\r");
                 }
                 else
                 {
                     BLINK_DELAY = 1000;
-                    uart_print_str("RELEASED, blink pace set to 1000ms\r\n");
+                    uart_print_str("\n\r\033[KRELEASED, blink pace set to 1000ms\033[A\r");
                 }
                 last_press_time = systick_count;
             }
@@ -83,12 +83,12 @@ int main(void)
         if (GPIOB->IDR & GPIO_IDR_IDR2)
         {
             GPIOB->BSRR = GPIO_BSRR_BR2;
-            uart_print_str("Led status: ON\r\n");
+            uart_print_str("\033[KLed status: ON\r");
         }
         else
         {
             GPIOB->BSRR = GPIO_BSRR_BS2;
-            uart_print_str("Led status: OFF\r\n");
+            uart_print_str("\033[KLed status: OFF\r");
         }
         delay_ms(BLINK_DELAY);
     }
