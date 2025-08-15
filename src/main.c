@@ -61,38 +61,35 @@ int main(void)
     // Enable clock for GPIOA & GPIOB (bit 3:2 in RCC_APB2ENR)
     RCC->APB2ENR |= (RCC_APB2ENR_AFIOEN | RCC_APB2ENR_IOPAEN | RCC_APB2ENR_IOPBEN);
 
-    {
-        // Clear bits 3:0 in CRL for PA0
-        GPIOA->CRL &= ~(0xF << 0);
-        GPIOA->CRL |= GPIO_CRL_CNF0_1; // Input with pull-up/pull-down
-        GPIOA->ODR &= ~GPIO_ODR_ODR0;  // Enable pull-down
+    // Enable button interrupt (GPIO pin A0)
+    GPIOA->CRL &= ~(0xF << 0);      // Clear bits 3:0 in CRL for PA0
+    GPIOA->CRL |= GPIO_CRL_CNF0_1;  // Input with pull-up/pull-down
+    GPIOA->ODR &= ~GPIO_ODR_ODR0;   // Enable pull-down
+    AFIO->EXTICR[0] &= ~(0xF << 0); // Reset EXTI0 3:0 bits
+    // AFIO->EXTICR[0] |= AFIO_EXTICR1_EXTI0_PA; // Connect External interrupt to PA0 (button pressed), actually not needed since reset gives the wanted value
+    EXTI->RTSR |= EXTI_RTSR_RT0; // Enable rising trigger for input line 0 (EXTI0) [RTSR == Rising Trigger Selection Register]
+    EXTI->FTSR |= EXTI_FTSR_FT0; // Enable falling trigger for input line 0 (EXTI0)
+    EXTI->IMR |= EXTI_IMR_IM0;   // Unmask interrupt requests on line 0 (EXTI0) [IMR == Interrupt Mask Register]
+    NVIC_EnableIRQ(EXTI0_IRQn);
 
-        AFIO->EXTICR[0] &= ~(0xF << 0); // Reset EXTI0 3:0 bits
-        // AFIO->EXTICR[0] |= AFIO_EXTICR1_EXTI0_PA; // Connect External interrupt to PA0 (button pressed), actually not needed since reset gives the wanted value
-        EXTI->RTSR |= EXTI_RTSR_RT0; // Enable rising trigger for input line 0 (EXTI0) [RTSR == Rising Trigger Selection Register]
-        EXTI->FTSR |= EXTI_FTSR_FT0;
-        EXTI->IMR |= EXTI_IMR_IM0; // Unmask interrupt requests on line 0 (EXTI0) [IMR == Interrupt Mask Register]
-
-        NVIC_EnableIRQ(EXTI0_IRQn);
-    }
-
-    {
-        // Configure PB2 as output, push-pull, 2MHz
-        // Clear bits 11:8 in CRL for PB2
-        GPIOB->CRL &= ~(0xF << 8);
-        // Set MODE2 to 10 (output, 2MHz), CNF2 remains 00 (general purpose output push-pull)
-        GPIOB->CRL |= GPIO_CRL_MODE2_1;
-    }
+    // Configure PB2 as output (for LED blinking), push-pull, 2MHz
+    GPIOB->CRL &= ~(0xF << 8);      // Clear bits 11:8 in CRL for PB2
+    GPIOB->CRL |= GPIO_CRL_MODE2_1; // Set MODE2 to 10 (output, 2MHz), CNF2 remains 00 (general purpose output push-pull)
 
     while (1)
     {
         // On the original board model the pin associated with the integrated led is the GPIO C13 pin (https://stm32-base.org/boards/STM32F103C8T6-Blue-Pill#User-LED).
-        // On the model I own (WeAct made) Integrated LED is controlled by GPIO B2 pin (https://stm32-base.org/boards/STM32F103C8T6-WeAct-Blue-Pill-Plus-Clone.html#User-LED).
-        GPIOB->BSRR = (GPIOB->IDR & GPIO_IDR_IDR2) ? GPIO_BSRR_BR2 : GPIO_BSRR_BS2;
+        // On the model I own (by WeAct), integrated LED is controlled by GPIO B2 pin (https://stm32-base.org/boards/STM32F103C8T6-WeAct-Blue-Pill-Plus-Clone.html#User-LED).
         if (GPIOB->IDR & GPIO_IDR_IDR2)
+        {
+            GPIOB->BSRR = GPIO_BSRR_BR2;
             uart_print_str("Led status: ON\r\n");
+        }
         else
+        {
+            GPIOB->BSRR = GPIO_BSRR_BS2;
             uart_print_str("Led status: OFF\r\n");
+        }
         delay_ms(BLINK_DELAY);
     }
 
